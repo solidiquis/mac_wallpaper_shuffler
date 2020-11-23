@@ -38,7 +38,6 @@ func init() {
 }
 
 func getWallpapers() []string {
-
 	files, err := ioutil.ReadDir(wpDir)
 	if err != nil {
 		errLog.Fatalln(err)
