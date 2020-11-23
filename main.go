@@ -15,18 +15,29 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func main() {
-	errLog := log.New(os.Stderr, "ERROR:\t", log.Lshortfile)
+var (
+	wpDir string
 
-	err := godotenv.Load()
-	if err != nil {
+	errLog = log.New(os.Stderr, "ERROR:\t", log.Lshortfile)
+)
+
+func init() {
+	if err := godotenv.Load(); err != nil {
 		errLog.Fatalln(err)
 	}
 
-	wpDir, ok := os.LookupEnv("WP_PATH")
+	if err := ui.Init(); err != nil {
+		errLog.Fatalln(err)
+	}
+
+	wallpapers, ok := os.LookupEnv("WP_PATH")
 	if !ok {
 		errLog.Fatalln("Missing WP_PATH environment variable.")
 	}
+	wpDir = wallpapers
+}
+
+func getWallpapers() []string {
 
 	files, err := ioutil.ReadDir(wpDir)
 	if err != nil {
@@ -41,6 +52,10 @@ func main() {
 		}
 	}
 
+	return wallpapers
+}
+
+func getCurrentWallpaper() string {
 	cmd := exec.Command(
 		`osascript`,
 		`-e`,
@@ -53,23 +68,39 @@ func main() {
 	if err := cmd.Run(); err != nil {
 		log.Fatalln(errb.String())
 	}
-
 	sliceOutb := strings.Split(outb.String(), "/")
-	currentWallpaper := sliceOutb[len(sliceOutb)-1]
 
-	activeRow := func() int {
-		for i, wallpaper := range wallpapers {
-			if strings.Contains(currentWallpaper, wallpaper) {
-				return i
-			}
+	return sliceOutb[len(sliceOutb)-1]
+}
+
+func activeRowIndex(wallpapers []string, currentWallpaper string) int {
+	for i, wallpaper := range wallpapers {
+		if strings.Contains(currentWallpaper, wallpaper) {
+			return i
 		}
-		return 0
-	}()
+	}
 
-	if err := ui.Init(); err != nil {
+	return 0
+}
+
+func setNewWallpaper(newWallpaper string) {
+	osaCmd := fmt.Sprintf(
+		`tell application "Finder" to set desktop picture to POSIX file "%s"`,
+		newWallpaper,
+	)
+
+	err := exec.Command(`osascript`, `-e`, osaCmd).Run()
+	if err != nil {
 		errLog.Fatalln(err)
 	}
+}
+
+func main() {
 	defer ui.Close()
+
+	wallpapers := getWallpapers()
+	currentWallpaper := getCurrentWallpaper()
+	activeRow := activeRowIndex(wallpapers, currentWallpaper)
 
 	list := widgets.NewList()
 	list.Title = "Wallpapers"
@@ -98,11 +129,7 @@ func main() {
 
 		newWallpaper := filepath.Join(wpDir, wallpapers[list.SelectedRow])
 
-		osaCmd := fmt.Sprintf(`tell application "Finder" to set desktop picture to POSIX file "%s"`, newWallpaper)
-		err := exec.Command(`osascript`, `-e`, osaCmd).Run()
-		if err != nil {
-			errLog.Fatalln(err)
-		}
+		setNewWallpaper(newWallpaper)
 		ui.Render(list)
 	}
 }
